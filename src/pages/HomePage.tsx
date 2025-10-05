@@ -1065,7 +1065,7 @@ const HomePage: React.FC = () => {
             <motion.div
               className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[color:var(--accent-light)]/10 to-[color:var(--accent-light)]/10 p-8 border border-[color:var(--border-light)]"
               style={{
-                backgroundImage: `linear-gradient(rgba(15, 20, 25, 0.7), rgba(26, 37, 47, 0.8)), url('${process.env.PUBLIC_URL}/images/为什么要学习这门课/四、通过学习，你能学到什么？-（二）本节课课程内容.jpg')`,
+                backgroundImage: `linear-gradient(rgba(15, 20, 25, 0.7), rgba(26, 37, 47, 0.8)), url('${process.env.PUBLIC_URL}/images/为什么要学习这门课/四、通过学习，你能学到什么？-（二）本节课课程内容.JPG')`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
               }}
