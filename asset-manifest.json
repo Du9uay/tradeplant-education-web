@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/tradeplant-education-web/static/css/main.7ab456ea.css",
-    "main.js": "/tradeplant-education-web/static/js/main.953a4b47.js",
+    "main.js": "/tradeplant-education-web/static/js/main.4bd3c52c.js",
     "index.html": "/tradeplant-education-web/index.html",
     "main.7ab456ea.css.map": "/tradeplant-education-web/static/css/main.7ab456ea.css.map",
-    "main.953a4b47.js.map": "/tradeplant-education-web/static/js/main.953a4b47.js.map"
+    "main.4bd3c52c.js.map": "/tradeplant-education-web/static/js/main.4bd3c52c.js.map"
   },
   "entrypoints": [
     "static/css/main.7ab456ea.css",
-    "static/js/main.953a4b47.js"
+    "static/js/main.4bd3c52c.js"
   ]
 }
