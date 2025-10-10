@@ -43,18 +43,20 @@ const Navigation: React.FC = () => {
            background: 'rgba(30, 41, 59, 0.7)',
            borderColor: 'rgba(148, 163, 184, 0.2)'
          }}>
+    <button
+        onClick={() => setIsTrialModalOpen(true)}
+        className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-purple-500/30"
+      >
+        <PlayCircle className="w-4 h-4" />
+        <span>直播回放</span>
+      </button>
+
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* 直播回放按钮和Logo */}
           <div className="flex items-center space-x-4">
             {/* 直播回放按钮 */}
-            <button
-              onClick={() => setIsTrialModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-medium text-sm transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-purple-500/30"
-            >
-              <PlayCircle className="w-4 h-4" />
-              <span>直播回放</span>
-            </button>
+            
 
             {/* Logo */}
             <Link to="/" style={{ color: 'var(--text-primary)' }} className="text-xl font-bold transition-colors">

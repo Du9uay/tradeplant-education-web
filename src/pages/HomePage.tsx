@@ -161,7 +161,8 @@ const HomePage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen py-12 px-4 xl:pr-72">
+    <>
+    <div className="min-h-screen py-12 px-4">
       <div className="max-w-6xl mx-auto relative">
         {/* 主标题区域 - 带动画 */}
         <motion.div 
@@ -267,6 +268,8 @@ const HomePage: React.FC = () => {
             videoUrl="https://ddcz-1315997005.cos.ap-nanjing.myqcloud.com/static/video/web_teach/recuYIPvHlDP5b.mov"
             position={{ top: 0, right: '-16rem' }}
           />
+
+
         </motion.section>
 
         {/* 第一部分：为什么要关注行业 */}
@@ -292,12 +295,13 @@ const HomePage: React.FC = () => {
             </div>
           </motion.div>
 
+
+
           {/* 数字人播放器2 - 为什么要关注行业 */}
           <DigitalAvatarPlayer
             videoUrl="https://ddcz-1315997005.cos.ap-nanjing.myqcloud.com/static/video/web_teach/recuYIQO9mlAWk.mov"
-            position={{ top: 0, right: '-16rem' }}
+            position={{ top: 380, right: '-16rem' }}
           />
-
           {/* 主内容区 - 大卡片 */}
           <motion.div
             className="glass-deep p-12 relative overflow-hidden mb-8"
@@ -481,12 +485,13 @@ const HomePage: React.FC = () => {
             </div>
           </motion.div>
 
+
+
           {/* 数字人播放器3 - 为什么要分清企业类型 */}
           <DigitalAvatarPlayer
             videoUrl="https://ddcz-1315997005.cos.ap-nanjing.myqcloud.com/static/video/web_teach/recuYIQO9mQ6bl.mov"
-            position={{ top: 0, right: '-16rem' }}
+            position={{ top: 200, right: '-16rem' }}
           />
-
           {/* 主内容区 - 阶梯式企业类型布局 */}
           <div className="relative max-w-5xl mx-auto">
             <div className="space-y-8">
@@ -743,12 +748,13 @@ const HomePage: React.FC = () => {
             </div>
           </motion.div>
 
+
+
           {/* 数字人播放器4 - 关于岗位你该知道的是 */}
           <DigitalAvatarPlayer
             videoUrl="https://ddcz-1315997005.cos.ap-nanjing.myqcloud.com/static/video/web_teach/recuYIQO9mwVzw.mov"
-            position={{ top: 0, right: '-16rem' }}
+            position={{ top: 200, right: '-16rem' }}
           />
-
           {/* 岗位分类卡片 */}
           <div className="grid lg:grid-cols-4 gap-6 mb-8">
             {/* 前期策划 */}
@@ -989,12 +995,13 @@ const HomePage: React.FC = () => {
             </div>
           </motion.div>
 
+
+
           {/* 数字人播放器5 - 通过学习，你能学到什么 */}
           <DigitalAvatarPlayer
             videoUrl="https://ddcz-1315997005.cos.ap-nanjing.myqcloud.com/static/video/web_teach/recuYIQO9mkxza.mov"
-            position={{ top: 0, right: '-16rem' }}
+            position={{ top: 300, right: '-16rem' }}
           />
-
           {/* 主内容区 - 课程大纲和技能 */}
           <div className="grid lg:grid-cols-2 gap-8 mb-8">
             {/* 课程核心内容卡片 */}
@@ -1311,12 +1318,13 @@ const HomePage: React.FC = () => {
               职业发展前景
             </motion.h1>
 
+
+
             {/* 数字人播放器6 - 职业发展前景 */}
             <DigitalAvatarPlayer
               videoUrl="https://ddcz-1315997005.cos.ap-nanjing.myqcloud.com/static/video/web_teach/recuYIQO9m8Lt7.mov"
               position={{ top: 0, right: '-16rem' }}
             />
-
             <motion.p
               className="text-xl max-w-3xl mx-auto leading-relaxed"
               style={{ color: 'var(--text-secondary)' }}
@@ -1498,7 +1506,9 @@ const HomePage: React.FC = () => {
         </motion.div>
       </div>
     </div>
+
+    </>
   );
 };
   
-export default HomePage; 
+export default HomePage;

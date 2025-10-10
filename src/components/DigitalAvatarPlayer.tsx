@@ -102,7 +102,7 @@ const DigitalAvatarPlayer: React.FC<DigitalAvatarPlayerProps> = ({
   };
 
   return (
-    <div style={positionStyle} className="hidden xl:block">
+    <div style={positionStyle}>
       <AnimatePresence>
         <motion.div
           initial={{ opacity: 0, y: -20, scale: 0.95 }}
@@ -138,9 +138,9 @@ const DigitalAvatarPlayer: React.FC<DigitalAvatarPlayerProps> = ({
                     }}
                     animate={{
                       boxShadow: [
-                        "0 0 20px rgba(59, 130, 246, 0.5)",
-                        "0 0 30px rgba(139, 92, 246, 0.7)",
-                        "0 0 20px rgba(59, 130, 246, 0.5)"
+                        "0 0 20px rgba(10, 123, 140, 0.5)",
+                        "0 0 30px rgba(10, 123, 140, 0.7)",
+                        "0 0 20px rgba(10, 123, 140, 0.5)"
                       ]
                     }}
                     transition={{
@@ -156,7 +156,7 @@ const DigitalAvatarPlayer: React.FC<DigitalAvatarPlayerProps> = ({
                     }}
                   >
                     {/* 渐变背景层 */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-700 opacity-80 rounded-full"></div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-[color:var(--accent-primary)] to-[color:var(--accent-secondary)] opacity-80 rounded-full"></div>
 
                     {/* 播放按钮覆盖层 */}
                     <div className="absolute inset-0 bg-black/20 flex items-center justify-center group-hover:bg-black/30 transition-all duration-300 rounded-full">
@@ -170,7 +170,7 @@ const DigitalAvatarPlayer: React.FC<DigitalAvatarPlayerProps> = ({
 
                     {/* 呼吸光环效果 */}
                     <motion.div
-                      className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 opacity-30 pointer-events-none"
+                      className="absolute -inset-1 rounded-full bg-gradient-to-r from-[color:var(--accent-primary)] to-[color:var(--accent-secondary)] opacity-30 pointer-events-none"
                       animate={{
                         scale: [1, 1.05, 1],
                         opacity: [0.3, 0.5, 0.3]
@@ -204,7 +204,7 @@ const DigitalAvatarPlayer: React.FC<DigitalAvatarPlayerProps> = ({
                       left: '50%',
                       top: '50%',
                       transform: 'translate(-50%, -50%)',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', // 背景渐变
+                      background: 'linear-gradient(135deg, #0A7B8C 0%, #12A5B8 100%)', // 蓝绿色背景渐变
                       padding: '3px', // 创建渐变边框效果
                     }}
                   >
@@ -229,12 +229,14 @@ const DigitalAvatarPlayer: React.FC<DigitalAvatarPlayerProps> = ({
                         muted={false}
                         style={{
                           background: 'transparent',
-                          borderRadius: '50%', // 确保视频也是圆形
+                          borderRadius: '0%', // 确保视频也是圆形
                           width: '120%',  // 适度放大视频内容
                           height: '120%', // 适度放大视频内容
-                          left: '50%',
-                          top: '50%',
+                          left: '45%',
+                          top: '60%',
                           transform: 'translate(-50%, -50%)', // 居中对齐
+                          maxWidth: 'none', // 移除最大宽度限制
+                          maxHeight: 'none', // 移除最大高度限制
                         }}
                       >
                         <source src={videoUrl} type="video/mp4" />
@@ -284,7 +286,7 @@ const DigitalAvatarPlayer: React.FC<DigitalAvatarPlayerProps> = ({
                   >
                     <button
                       onClick={handleTogglePlay}
-                      className="w-8 h-8 bg-blue-600/90 hover:bg-blue-700 rounded-full flex items-center justify-center text-white transition-all duration-200 shadow-lg transform hover:scale-105 active:scale-95"
+                      className="w-8 h-8 bg-[color:var(--accent-primary)]/90 hover:bg-[color:var(--accent-primary)] rounded-full flex items-center justify-center text-white transition-all duration-200 shadow-lg transform hover:scale-105 active:scale-95"
                     >
                       {isVideoPlaying ? (
                         <div className="w-3 h-3 bg-white rounded-sm"></div>

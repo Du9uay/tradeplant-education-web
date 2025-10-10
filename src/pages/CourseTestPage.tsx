@@ -1,1058 +1,1067 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Award, BookOpen, RefreshCw, Target, CheckCircle, ArrowRight, Users, Move } from '../components/Icons';
-import { Line, ActiveLine, Point } from '../types/matching';
+import { Award, BookOpen, RefreshCw, Target, CheckCircle, ArrowRight } from '../components/Icons';
+
+interface Line {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  leftId: string;
+  rightId: string;
+}
+
+interface ActiveLine {
+  start: { x: number; y: number };
+  end?: { x: number; y: number };
+  leftId: string;
+}
+
+// 打乱数组顺序的辅助函数
+const shuffleArray = <T extends any>(array: T[]): T[] => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
+
 
 const CourseTestPage: React.FC = () => {
   const [currentSection, setCurrentSection] = useState('multiple');
   const [showResults, setShowResults] = useState(false);
-  const [answers, setAnswers] = useState<{ [key: string]: string | string[] | { [key: string]: string } }>({});
-  const [timeRemaining, setTimeRemaining] = useState(20 * 60); // 20分钟
-  
-  // 拖拽排序状态
-  const [sequenceItems, setSequenceItems] = useState(['签约缴费', '资质提交', '审核', '注册', '店铺搭建']);
+  const [answers, setAnswers] = useState<{ [key: string]: string | string[] }>({});
+  const [lines, setLines] = useState<Line[]>([]);
+  const [activeLine, setActiveLine] = useState<ActiveLine | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const itemRefs = useRef<{ [key: string]: HTMLDivElement }>({});
+  const [shuffledQuestions, setShuffledQuestions] = useState<typeof matchingQuestions>([]);
+  const [sequenceAnswers, setSequenceAnswers] = useState<{ [key: string]: string[] }>({});
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
 
-  // 配对题状态
-  const [matchingAnswers, setMatchingAnswers] = useState<{ [key: string]: string }>({});
-  const [wordMatchingAnswers, setWordMatchingAnswers] = useState<{ [key: string]: string }>({});
-  
-  // 连线功能状态
-  // 连线功能状态 - 平台配对题
-  const [platformLines, setPlatformLines] = useState<Line[]>([]);
-  const [platformActiveLine, setPlatformActiveLine] = useState<ActiveLine | null>(null);
-  const [platformDrawing, setPlatformDrawing] = useState(false);
-  
-  // 连线功能状态 - 词义配对题  
-  const [wordLines, setWordLines] = useState<Line[]>([]);
-  const [wordActiveLine, setWordActiveLine] = useState<ActiveLine | null>(null);
-  const [wordDrawing, setWordDrawing] = useState(false);
-  
-  // DOM引用
-  const platformItemRefs = useRef<{ [key: string]: HTMLDivElement }>({});
-  const wordItemRefs = useRef<{ [key: string]: HTMLDivElement }>({});
-  const platformSvgRef = useRef<SVGSVGElement>(null);
-  const wordSvgRef = useRef<SVGSVGElement>(null);
-  const platformContainerRef = useRef<HTMLDivElement>(null);
-  const wordContainerRef = useRef<HTMLDivElement>(null);
-
-  const sections = ['multiple', 'fillblank', 'matching', 'sequence'];
-  const sectionNames = {
-    multiple: '选择题',
-    fillblank: '填空题', 
-    matching: '配对题',
-    sequence: '排序题'
-  };
+  // 计时器
+  const [timeRemaining, setTimeRemaining] = useState(30 * 60); // 30分钟
 
   useEffect(() => {
     if (timeRemaining > 0 && !showResults) {
       const timer = setTimeout(() => setTimeRemaining(timeRemaining - 1), 1000);
       return () => clearTimeout(timer);
     } else if (timeRemaining === 0) {
-      handleSubmit();
+      setShowResults(true);
     }
   }, [timeRemaining, showResults]);
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // 选择题
-  const multipleChoiceQuestions = [
+  // 顺序题数据
+  const sequenceQuestions = useMemo(() => [
     {
-      id: 'q1',
-      question: '国内主流电商平台中，以高客单价商品适配为主的是？',
-      options: ['淘宝', '京东', '拼多多', '抖音'],
-      correct: '京东'
-    },
-    {
-      id: 'q2', 
-      question: '个人店适用于哪种经营情况？',
-      options: [
-        '单一品牌全品类经营',
-        '多品牌或单一品牌特定品类经营',
-        '轻量级低资质品类经营',
-        '高端品牌全品类经营'
+      id: 'platform_entry_flow',
+      question: '请将平台入驻流程按正确顺序排列：',
+      items: [
+        { id: 'submit_application', text: '提交入驻申请' },
+        { id: 'choose_platform', text: '选择目标平台' },
+        { id: 'prepare_materials', text: '准备资质材料' },
+        { id: 'wait_review', text: '等待平台审核' },
+        { id: 'open_shop', text: '缴费开店' }
       ],
-      correct: '轻量级低资质品类经营'
+      correctOrder: ['choose_platform', 'prepare_materials', 'submit_application', 'wait_review', 'open_shop']
     },
     {
-      id: 'q3',
-      question: '选平台时，不需要考虑以下哪个因素？',
-      options: ['目标用户特征', '产品价格', '品牌调性', '天气情况'],
-      correct: '天气情况'
+      id: 'qualification_preparation',
+      question: '请将资质准备的重要性按顺序排列：',
+      items: [
+        { id: 'optional_cert', text: '可选附加证件' },
+        { id: 'tax_info', text: '税务登记信息' },
+        { id: 'business_license', text: '营业执照' }
+      ],
+      correctOrder: ['business_license', 'tax_info', 'optional_cert']
     }
-  ];
+  ], []);
 
-  // 填空题
-  const fillInBlankQuestions = [
+  // 匹配题数据
+  const matchingQuestions = useMemo(() => [
     {
-      id: 'f1',
-      question: '店铺类型中，专营店适配_____。',
-      correct: '多品牌或单一品牌特定品类'
-    },
-    {
-      id: 'f2',
-      question: '平台入驻共通环节包括注册、资质提交、审核、签约缴费、_____。',
-      correct: '店铺搭建'
-    }
-  ];
-
-  // 连线题 - 平台特色匹配
-  const matchingPairs = [
-    { id: 'm1', left: '拼多多', right: '下沉市场价格敏感型消费者' },
-    { id: 'm2', left: '京东', right: '中高端品质化用户' },
-    { id: 'm3', left: '淘宝', right: '全消费层级覆盖' },
-    { id: 'm4', left: '抖音', right: '年轻群体娱乐导向消费' }
-  ];
-
-  // 词义配对题
-  const wordMatchingPairs = [
-    { id: 'w1', left: '旗舰店', right: '品牌方提供商标证等资质经营全品类' },
-    { id: 'w2', left: '专营店', right: '需多个品牌授权经营同类商品' },
-    { id: 'w3', left: '专卖店', right: '需品牌独家授权经营单一品牌商品' },
-    { id: 'w4', left: '个人店', right: '资质要求低经营轻量级品类' }
-  ];
-
-  // 排序题
-  const sequenceQuestion = {
-    id: 's1',
-    question: '将平台入驻共通环节按顺序排列：',
-    items: ['签约缴费', '资质提交', '审核', '注册', '店铺搭建'],
-    correct: ['注册', '资质提交', '审核', '签约缴费', '店铺搭建']
-  };
-
-  const handleAnswer = (questionId: string, answer: string | string[]) => {
-    setAnswers(prev => ({ ...prev, [questionId]: answer }));
-  };
-
-  // 计算元素中心点坐标（相对于SVG容器）
-  const getItemCenter = useCallback((element: HTMLElement, containerRef: React.RefObject<HTMLDivElement>): Point => {
-    const rect = element.getBoundingClientRect();
-    const containerRect = containerRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
-    return {
-      x: rect.left + rect.width / 2 - containerRect.left,
-      y: rect.top + rect.height / 2 - containerRect.top
-    };
-  }, []);
-
-  // 平台配对题连线处理
-  const handlePlatformLeftItemClick = useCallback((leftId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const element = platformItemRefs.current[leftId];
-    if (element) {
-      // 如果该项已经连线，先移除现有连线
-      if (platformLines.some(line => line.leftId === leftId)) {
-        setPlatformLines(prev => prev.filter(line => line.leftId !== leftId));
-        setMatchingAnswers(prev => {
-          const newAnswers = { ...prev };
-          delete newAnswers[leftId];
-          return newAnswers;
-        });
+      id: 'm1',
+      leftItems: [
+        { id: 'l1', text: '淘宝/天猫' },
+        { id: 'l2', text: '抖音电商' },
+        { id: 'l3', text: '拼多多' },
+        { id: 'l4', text: '京东' }
+      ],
+      rightItems: [
+        { id: 'r1', text: '短视频+直播带货，内容驱动' },
+        { id: 'r2', text: 'C2C+B2C综合市场，品类齐全' },
+        { id: 'r3', text: '自营+POP模式，品质保障' },
+        { id: 'r4', text: '拼团模式，主打性价比' }
+      ],
+      correctMatches: {
+        'l1': 'r2', // 淘宝/天猫 - C2C+B2C综合市场
+        'l2': 'r1', // 抖音 - 短视频+直播带货
+        'l3': 'r4', // 拼多多 - 拼团模式
+        'l4': 'r3'  // 京东 - 自营+POP模式
       }
-      
-      // 创建新的活动连线
-      const center = getItemCenter(element, platformContainerRef);
-      setPlatformActiveLine({
-        start: center,
-        leftId
-      });
-      setPlatformDrawing(true);
     }
-  }, [platformLines, getItemCenter]);
+  ], []);
 
-  const handlePlatformRightItemClick = useCallback((rightId: string, e: React.MouseEvent) => {
-    if (!platformActiveLine) return;
-    
-    e.stopPropagation();
-    const element = platformItemRefs.current[rightId];
-    if (element) {
-      // 防止重复连接到同一右侧项
-      if (platformLines.some(line => line.rightId === rightId)) {
-        return;
-      }
+  // 初始化时打乱题目顺序
+  useEffect(() => {
+    const shuffled = matchingQuestions.map(question => ({
+      ...question,
+      leftItems: shuffleArray(question.leftItems),
+      rightItems: shuffleArray(question.rightItems)
+    }));
+    setShuffledQuestions(shuffled);
 
-      // 创建新连线
-      const center = getItemCenter(element, platformContainerRef);
-      const newLine: Line = {
-        start: platformActiveLine.start,
-        end: center,
-        leftId: platformActiveLine.leftId,
-        rightId
-      };
+    // 初始化顺序题答案（打乱顺序）
+    const initialSequenceAnswers: { [key: string]: string[] } = {};
+    sequenceQuestions.forEach(question => {
+      initialSequenceAnswers[question.id] = shuffleArray([...question.items]).map(item => item.id);
+    });
+    setSequenceAnswers(initialSequenceAnswers);
+  }, [matchingQuestions, sequenceQuestions]);
 
-      setPlatformLines(prev => [...prev, newLine]);
-      setPlatformActiveLine(null);
-      setPlatformDrawing(false);
-      
-      // 更新答案
-      setMatchingAnswers(prev => ({
-        ...prev,
-        [platformActiveLine.leftId]: rightId
-      }));
-    }
-  }, [platformActiveLine, platformLines, getItemCenter]);
-
-  // 词义配对题连线处理  
-  const handleWordLeftItemClick = useCallback((leftId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const element = wordItemRefs.current[leftId];
-    if (element) {
-      // 如果该项已经连线，先移除现有连线
-      if (wordLines.some(line => line.leftId === leftId)) {
-        setWordLines(prev => prev.filter(line => line.leftId !== leftId));
-        setWordMatchingAnswers(prev => {
-          const newAnswers = { ...prev };
-          delete newAnswers[leftId];
-          return newAnswers;
-        });
-      }
-      
-      // 创建新的活动连线
-      const center = getItemCenter(element, wordContainerRef);
-      setWordActiveLine({
-        start: center,
-        leftId
-      });
-      setWordDrawing(true);
-    }
-  }, [wordLines, getItemCenter]);
-
-  const handleWordRightItemClick = useCallback((rightId: string, e: React.MouseEvent) => {
-    if (!wordActiveLine) return;
-    
-    e.stopPropagation();
-    const element = wordItemRefs.current[rightId];
-    if (element) {
-      // 防止重复连接到同一右侧项
-      if (wordLines.some(line => line.rightId === rightId)) {
-        return;
-      }
-
-      // 创建新连线
-      const center = getItemCenter(element, wordContainerRef);
-      const newLine: Line = {
-        start: wordActiveLine.start,
-        end: center,
-        leftId: wordActiveLine.leftId,
-        rightId
-      };
-
-      setWordLines(prev => [...prev, newLine]);
-      setWordActiveLine(null);
-      setWordDrawing(false);
-      
-      // 更新答案
-      setWordMatchingAnswers(prev => ({
-        ...prev,
-        [wordActiveLine.leftId]: rightId
-      }));
-    }
-  }, [wordActiveLine, wordLines, getItemCenter]);
-
-  // 鼠标移动处理
-  const handlePlatformMouseMove = useCallback((e: React.MouseEvent) => {
-    if (platformActiveLine && platformDrawing && platformContainerRef.current) {
-      const containerRect = platformContainerRef.current.getBoundingClientRect();
-      setPlatformActiveLine({
-        ...platformActiveLine,
-        end: {
-          x: e.clientX - containerRect.left,
-          y: e.clientY - containerRect.top
-        }
-      });
-    }
-  }, [platformActiveLine, platformDrawing]);
-
-  const handleWordMouseMove = useCallback((e: React.MouseEvent) => {
-    if (wordActiveLine && wordDrawing && wordContainerRef.current) {
-      const containerRect = wordContainerRef.current.getBoundingClientRect();
-      setWordActiveLine({
-        ...wordActiveLine,
-        end: {
-          x: e.clientX - containerRect.left,
-          y: e.clientY - containerRect.top
-        }
-      });
-    }
-  }, [wordActiveLine, wordDrawing]);
-
-  // 取消连线
-  const handlePlatformCancelDrawing = useCallback(() => {
-    setPlatformActiveLine(null);
-    setPlatformDrawing(false);
-  }, []);
-
-  const handleWordCancelDrawing = useCallback(() => {
-    setWordActiveLine(null);
-    setWordDrawing(false);
-  }, []);
-
-
-
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: string) => {
-    setDraggedItem(item);
+  // 拖拽处理函数
+  const handleDragStart = (e: React.DragEvent, itemId: string) => {
+    setDraggedItem(itemId);
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>, targetIndex: number) => {
+  const handleDrop = (e: React.DragEvent, targetItemId: string, questionId: string) => {
     e.preventDefault();
-    if (!draggedItem) return;
+    if (!draggedItem || draggedItem === targetItemId) return;
 
-    const draggedIndex = sequenceItems.indexOf(draggedItem);
-    if (draggedIndex === -1) return;
-
-    const newItems = [...sequenceItems];
-    newItems.splice(draggedIndex, 1);
-    newItems.splice(targetIndex, 0, draggedItem);
+    setSequenceAnswers(prev => {
+      const items = [...prev[questionId]];
+      const draggedIndex = items.indexOf(draggedItem);
+      const targetIndex = items.indexOf(targetItemId);
+      
+      // 移动项目
+      items.splice(draggedIndex, 1);
+      items.splice(targetIndex, 0, draggedItem);
+      
+      return {
+        ...prev,
+        [questionId]: items
+      };
+    });
     
-    setSequenceItems(newItems);
     setDraggedItem(null);
-    handleAnswer(sequenceQuestion.id, newItems);
   };
 
-  const calculateScore = () => {
-    let correct = 0;
-    let total = 0;
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+  };
 
-    // 选择题评分
-    multipleChoiceQuestions.forEach(q => {
-      total++;
-      if (answers[q.id] === q.correct) correct++;
-    });
-
-    // 填空题评分
-    fillInBlankQuestions.forEach(q => {
-      total++;
-      const userAnswer = (answers[q.id] as string)?.toLowerCase().trim();
-      const correctAnswer = q.correct.toLowerCase().trim();
-      if (userAnswer === correctAnswer) correct++;
-    });
-
-    // 平台配对题评分
-    total += matchingPairs.length;
-    matchingPairs.forEach(pair => {
-      if (matchingAnswers[pair.left] === pair.right) correct++;
-    });
-
-    // 词义配对题评分
-    total += wordMatchingPairs.length;
-    wordMatchingPairs.forEach(pair => {
-      if (wordMatchingAnswers[pair.left] === pair.right) correct++;
-    });
-
-    // 排序题评分
-    total++;
-    const userSequence = answers[sequenceQuestion.id] as string[] || sequenceItems;
-    if (JSON.stringify(userSequence) === JSON.stringify(sequenceQuestion.correct)) {
-      correct++;
+  // 重置顺序题
+  const resetSequence = (questionId: string) => {
+    const question = sequenceQuestions.find(q => q.id === questionId);
+    if (question) {
+      setSequenceAnswers(prev => ({
+        ...prev,
+        [questionId]: shuffleArray([...question.items]).map(item => item.id)
+      }));
     }
-
-    return { correct, total, percentage: Math.round((correct / total) * 100) };
   };
 
-  const handleSubmit = () => {
-    // 保存配对题答案到answers中
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const handleSubmitTest = () => {
+    // 保存顺序题答案到answers状态
+    Object.keys(sequenceAnswers).forEach(questionId => {
+      setAnswers(prev => ({
+        ...prev,
+        [questionId]: sequenceAnswers[questionId]
+      }));
+    });
+    
+    setTimeout(() => {
+      setShowResults(true);
+      setCurrentSection('results');
+      // 滚动到测试导航栏位置
+      setTimeout(() => {
+        const resultsElement = document.querySelector('[data-testid="test-navigation"]');
+        if (resultsElement) {
+          resultsElement.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start' 
+          });
+        }
+      }, 100);
+    }, 1500);
+  };
+
+  // 选择题
+  const multipleChoice = [
+    {
+      id: 'q1',
+      question: '淘宝、天猫平台的核心定位是什么？',
+      options: [
+        'A. B2B批发市场',
+        'B. C2C和B2C综合市场',
+        'C. 社交电商',
+        'D. 跨境电商'
+      ],
+      correct: 'B'
+    },
+    {
+      id: 'q2',
+      question: '以下哪个不是店铺类型选择的主要考虑因素？',
+      options: [
+        'A. 经营品类',
+        'B. 资质要求',
+        'C. 公司规模',
+        'D. 店主年龄'
+      ],
+      correct: 'D'
+    },
+    {
+      id: 'q3',
+      question: '平台入驻时必须准备的核心资质是？',
+      options: [
+        'A. 学历证明',
+        'B. 营业执照',
+        'C. 驾驶证',
+        'D. 健康证'
+      ],
+      correct: 'B'
+    },
+    {
+      id: 'q4',
+      question: '抖音电商的核心优势是什么？',
+      options: [
+        'A. 价格最低',
+        'B. 短视频+直播带货',
+        'C. 商品种类最多',
+        'D. 配送最快'
+      ],
+      correct: 'B'
+    },
+    {
+      id: 'q5',
+      question: '拼多多平台的主要特点是？',
+      options: [
+        'A. 高端品牌',
+        'B. 拼团模式和价格优势',
+        'C. 跨境商品',
+        'D. 二手交易'
+      ],
+      correct: 'B'
+    }
+  ];
+
+  const handleMultipleChoice = (questionId: string, answer: string) => {
     setAnswers(prev => ({
       ...prev,
-      'matching_platform': matchingAnswers,
-      'matching_word': wordMatchingAnswers,
-      [sequenceQuestion.id]: sequenceItems
+      [questionId]: answer
     }));
-    setShowResults(true);
   };
+
+
+
+  const calculateScore = () => {
+    let totalQuestions = 0;
+    let correctAnswers = 0;
+    const details: any = {
+      multipleChoice: [],
+      matching: [],
+      sequence: []
+    };
+
+    // 选择题评分
+    multipleChoice.forEach(q => {
+      totalQuestions++;
+      const isCorrect = answers[q.id] === q.correct;
+      if (isCorrect) {
+        correctAnswers++;
+      }
+      details.multipleChoice.push({
+        id: q.id,
+        question: q.question,
+        userAnswer: answers[q.id],
+        correctAnswer: q.correct,
+        isCorrect,
+        options: q.options
+      });
+    });
+
+    // 匹配题评分
+    matchingQuestions.forEach(q => {
+      Object.keys(q.correctMatches).forEach(leftId => {
+        totalQuestions++;
+        const isCorrect = answers[`${leftId}_match`] === (q.correctMatches as any)[leftId];
+        if (isCorrect) {
+          correctAnswers++;
+        }
+        const leftItem = q.leftItems.find(item => item.id === leftId);
+        const userRightId = answers[`${leftId}_match`];
+        const userRightItem = q.rightItems.find(item => item.id === userRightId);
+        const correctRightItem = q.rightItems.find(item => item.id === (q.correctMatches as any)[leftId]);
+        
+        details.matching.push({
+          leftId,
+          leftText: leftItem?.text,
+          userRightText: userRightItem?.text || '未匹配',
+          correctRightText: correctRightItem?.text,
+          isCorrect
+        });
+      });
+    });
+
+    // 顺序题评分
+    sequenceQuestions.forEach(q => {
+      totalQuestions++;
+      const userOrder = answers[q.id] || sequenceAnswers[q.id];
+      const isCorrect = userOrder && JSON.stringify(userOrder) === JSON.stringify(q.correctOrder);
+      if (isCorrect) {
+        correctAnswers++;
+      }
+      
+      const userOrderText = userOrder && Array.isArray(userOrder) ? userOrder.map((id: string) => q.items.find(item => item.id === id)?.text).filter(Boolean) : [];
+      const correctOrderText = q.correctOrder.map((id: string) => q.items.find(item => item.id === id)?.text).filter(Boolean);
+      
+      details.sequence.push({
+        id: q.id,
+        question: q.question,
+        userOrder: userOrderText,
+        correctOrder: correctOrderText,
+        isCorrect
+      });
+    });
+
+    return {
+      total: totalQuestions,
+      correct: correctAnswers,
+      percentage: Math.round((correctAnswers / totalQuestions) * 100),
+      score: Math.round((correctAnswers / totalQuestions) * 100),
+      details
+    };
+  };
+
+
 
   const resetTest = () => {
     setAnswers({});
-    setMatchingAnswers({});
-    setWordMatchingAnswers({});
-    
-    // 重置连线状态
-    setPlatformLines([]);
-    setPlatformActiveLine(null);
-    setPlatformDrawing(false);
-    setWordLines([]);
-    setWordActiveLine(null);
-    setWordDrawing(false);
-    
-    setSequenceItems(['签约缴费', '资质提交', '审核', '注册', '店铺搭建']);
     setShowResults(false);
     setCurrentSection('multiple');
-    setTimeRemaining(20 * 60);
+    setLines([]);
+    setActiveLine(null);
+    setTimeRemaining(30 * 60); // 重置计时器
+    
+    // 重新打乱题目顺序
+    const shuffled = matchingQuestions.map(question => ({
+      ...question,
+      leftItems: shuffleArray(question.leftItems),
+      rightItems: shuffleArray(question.rightItems)
+    }));
+    setShuffledQuestions(shuffled);
+
+    // 重新初始化顺序题答案
+    const initialSequenceAnswers: { [key: string]: string[] } = {};
+    sequenceQuestions.forEach(question => {
+      initialSequenceAnswers[question.id] = shuffleArray([...question.items]).map(item => item.id);
+    });
+    setSequenceAnswers(initialSequenceAnswers);
   };
 
-  const getNextSection = () => {
-    const currentIndex = sections.indexOf(currentSection);
-    return currentIndex < sections.length - 1 ? sections[currentIndex + 1] : null;
+  const score = showResults ? calculateScore() : null;
+
+  const getItemCenter = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    const svgRect = svgRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
+    return {
+      x: rect.left + rect.width / 2 - svgRect.left,
+      y: rect.top + rect.height / 2 - svgRect.top
+    };
   };
 
-  const getPrevSection = () => {
-    const currentIndex = sections.indexOf(currentSection);
-    return currentIndex > 0 ? sections[currentIndex - 1] : null;
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (activeLine) {
+      const svgRect = svgRef.current?.getBoundingClientRect();
+      if (svgRect) {
+        setActiveLine({
+          ...activeLine,
+          end: {
+            x: e.clientX - svgRect.left,
+            y: e.clientY - svgRect.top
+          }
+        });
+      }
+    }
   };
 
-  const score = showResults ? calculateScore() : { correct: 0, total: 0, percentage: 0 };
+  const handleLeftItemClick = (leftId: string, e: React.MouseEvent) => {
+    const element = itemRefs.current[leftId];
+    if (element) {
+      // 如果该项已经连线，先移除现有连线
+      if (lines.some(line => line.leftId === leftId)) {
+        setLines(prev => prev.filter(line => line.leftId !== leftId));
+        setAnswers(prev => {
+          const newAnswers = { ...prev };
+          delete newAnswers[`${leftId}_match`];
+          return newAnswers;
+        });
+      }
+      
+      const center = getItemCenter(element);
+      setActiveLine({
+        start: center,
+        leftId
+      });
+    }
+  };
 
-  return (
+  const handleRightItemClick = (rightId: string, e: React.MouseEvent) => {
+    if (activeLine) {
+      const element = itemRefs.current[rightId];
+      if (element) {
+        // 如果该项已经连线，不允许重复连接
+        if (lines.some(line => line.rightId === rightId)) {
+          return;
+        }
+
+        // 如果左侧项已经有其他连线，先移除
+        const existingLine = lines.find(line => line.leftId === activeLine.leftId);
+        if (existingLine) {
+          setLines(prev => prev.filter(line => line.leftId !== activeLine.leftId));
+          setAnswers(prev => {
+            const newAnswers = { ...prev };
+            delete newAnswers[`${activeLine.leftId}_match`];
+            return newAnswers;
+          });
+        }
+
+        const center = getItemCenter(element);
+        setLines(prev => [...prev, {
+          start: activeLine.start,
+          end: center,
+          leftId: activeLine.leftId,
+          rightId
+        }]);
+        setActiveLine(null);
+        
+        // 更新答案
+        setAnswers(prev => ({
+          ...prev,
+          [`${activeLine.leftId}_match`]: rightId
+        }));
+      }
+    }
+  };
+
+
+
+  // 重置时重新打乱顺序
+  const handleReset = (question: any) => {
+    setLines([]);
+    setAnswers(prev => {
+      const newAnswers = { ...prev };
+      question.leftItems.forEach((item: any) => {
+        delete newAnswers[`${item.id}_match`];
+      });
+      return newAnswers;
+    });
+    
+    // 重新打乱当前题目的选项顺序
+    setShuffledQuestions(prev => 
+      prev.map(q => 
+        q.id === question.id 
+          ? {
+              ...q,
+              leftItems: shuffleArray(q.leftItems),
+              rightItems: shuffleArray(q.rightItems)
+            }
+          : q
+      )
+    );
+  };
+
+        return (
     <div className="min-h-screen py-12 px-4">
-      <div className="container mx-auto px-4 py-20">
+      <div className="max-w-6xl mx-auto">
         {/* 页面标题 */}
         <motion.div 
-          className="text-center mb-12"
-          initial={{ opacity: 0, y: -30 }}
+          className="text-center mb-16"
+          initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
         >
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-gradient">
+          <motion.div 
+            className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-[color:var(--accent-orange)] to-[color:var(--system-yellow)] rounded-full mb-6"
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ delay: 0.3, type: "spring", stiffness: 200 }}
+          >
+            <Award className="w-10 h-10 text-accent-500" />
+          </motion.div>
+          <motion.h1 
+            className="text-4xl font-bold text-base-50 mb-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5, duration: 0.8 }}
+          >
             课堂测试
-          </h1>
-          <p className="text-xl" style={{ color: 'var(--text-secondary)' }}>
-            检验你对主流平台入驻策略与资质准备的掌握程度
-          </p>
+          </motion.h1>
+          <motion.p 
+            className="text-xl text-base-50/80 max-w-4xl mx-auto"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7, duration: 0.8 }}
+          >
+            通过综合测试检验您对电商平台入驻策略知识的掌握程度
+          </motion.p>
+          
+          {/* 计时器 */}
+          <motion.div 
+            className="mt-8 inline-flex items-center glass-effect rounded-full px-6 py-3"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.9, duration: 0.6 }}
+          >
+            <RefreshCw className="w-5 h-5 text-accent-500 mr-2" />
+            <span className={`font-mono text-lg ${timeRemaining < 300 ? 'text-red-400' : 'text-accent-500'}`}>
+              剩余时间: {formatTime(timeRemaining)}
+            </span>
+          </motion.div>
         </motion.div>
 
-        {!showResults ? (
-          <>
-            {/* 计时器和导航 */}
-            <div className="glass-card rounded-xl p-6 mb-8" style={{
-              background: 'rgba(216, 207, 213, 0.16)',
-              border: '1px solid rgba(255, 255, 255, 0.2)'
-            }}>
-              <div className="flex justify-between items-center mb-4">
-                <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  剩余时间: <span style={{ color: 'var(--still)' }}>{formatTime(timeRemaining)}</span>
-                </div>
-                <div className="flex space-x-2">
-                  {sections.map((section) => (
-                    <button
-                      key={section}
-                      onClick={() => setCurrentSection(section)}
-                      className={`px-4 py-2 rounded-lg transition-all duration-300 ${
-                        currentSection === section 
-                          ? 'text-white' 
-                          : 'hover:bg-white/20'
-                      }`}
-                      style={{
-                        backgroundColor: currentSection === section ? 'var(--still)' : 'rgba(255, 255, 255, 0.1)',
-                        color: currentSection === section ? 'white' : 'var(--text-secondary)',
-                        border: currentSection === section ? '1px solid var(--still)' : '1px solid rgba(255, 255, 255, 0.2)'
-                      }}
-                    >
-                      {sectionNames[section as keyof typeof sectionNames]}
-                    </button>
-                  ))}
-                </div>
-              </div>
+        {/* 测试导航 */}
+        <motion.div 
+          className="flex justify-center mb-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.1, duration: 0.6 }}
+          data-testid="test-navigation"
+        >
+          <div className="glass-effect rounded-2xl p-2">
+            <div className="flex space-x-2">
+              {[
+                { key: 'multiple', label: '选择题', color: 'bg-accent-500' },
+                { key: 'matching', label: '匹配题', color: 'bg-accent-500' },
+                { key: 'sequence', label: '顺序题', color: 'bg-accent-500' }
+              ].map((section) => (
+                <motion.button
+                  key={section.key}
+                  onClick={() => setCurrentSection(section.key as any)}
+                  className={`px-6 py-3 rounded-xl transition-all duration-300 ${
+                    currentSection === section.key
+                      ? `${section.color} text-base-900 shadow-lg`
+                      : 'text-base-50/80 hover:text-base-50 hover:bg-white/5'
+                  }`}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  animate={{
+                    scale: currentSection === section.key ? 1.05 : 1,
+                  }}
+                >
+                  {section.label}
+                </motion.button>
+              ))}
             </div>
+          </div>
+        </motion.div>
 
-            <AnimatePresence mode="wait">
-              {/* 选择题 */}
-              {currentSection === 'multiple' && (
-                <motion.div
-                  key="multiple"
-                  initial={{ opacity: 0, x: 100 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -100 }}
-                  transition={{ duration: 0.5 }}
-                  className="space-y-8"
-                >
-                  <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
-                    <BookOpen className="w-6 h-6 mr-2" />
-                    选择题
-                  </h2>
-                  {multipleChoiceQuestions.map((question, index) => (
-                    <div key={question.id} className="glass-card rounded-xl p-6" style={{
-                      background: 'rgba(216, 207, 213, 0.16)',
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
-                    }}>
-                      <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
-                        {index + 1}. {question.question}
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {question.options.map((option, optIndex) => (
-                          <motion.button
-                            key={optIndex}
-                            onClick={() => handleAnswer(question.id, option)}
-                            className={`p-3 rounded-lg text-left transition-all ${
-                              answers[question.id] === option
-                                ? 'text-white'
-                                : 'text-gray-300 hover:bg-white/10'
-                            }`}
-                            style={{
-                              backgroundColor: answers[question.id] === option 
-                                ? 'var(--still)' 
-                                : 'rgba(255, 255, 255, 0.05)'
-                            }}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                          >
-                            {String.fromCharCode(65 + optIndex)}. {option}
-                          </motion.button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </motion.div>
-              )}
-
-              {/* 填空题 */}
-              {currentSection === 'fillblank' && (
-                <motion.div
-                  key="fillblank"
-                  initial={{ opacity: 0, x: 100 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -100 }}
-                  transition={{ duration: 0.5 }}
-                  className="space-y-8"
-                >
-                  <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
-                    <Target className="w-6 h-6 mr-2" />
-                    填空题
-                  </h2>
-                  {fillInBlankQuestions.map((question, index) => (
-                    <div key={question.id} className="glass-card rounded-xl p-6" style={{
-                      background: 'rgba(216, 207, 213, 0.16)',
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
-                    }}>
-                      <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
-                        {index + 1}. {question.question}
-                      </h3>
-                      <input
-                        type="text"
-                        value={(answers[question.id] as string) || ''}
-                        onChange={(e) => handleAnswer(question.id, e.target.value)}
-                        className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-still"
-                        style={{ 
-                          borderColor: answers[question.id] ? 'var(--still)' : 'rgba(255, 255, 255, 0.2)'
-                        }}
-                        placeholder="请输入答案..."
-                      />
-                    </div>
-                  ))}
-                </motion.div>
-              )}
-
-              {/* 配对题 */}
-              {currentSection === 'matching' && (
-                <motion.div
-                  key="matching"
-                  initial={{ opacity: 0, x: 100 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -100 }}
-                  transition={{ duration: 0.5 }}
-                  className="space-y-8"
-                >
-                  <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
-                    <Users className="w-6 h-6 mr-2" />
-                    配对题
-                  </h2>
-                  
-                  {/* 平台特点配对题 */}
-                  <div className="glass-card rounded-xl p-6" style={{
-                    background: 'rgba(216, 207, 213, 0.16)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)'
-                  }}>
-                    <h3 className="text-lg font-semibold mb-4">平台特点配对题</h3>
-                    <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>
-                      点击左侧平台，然后点击右侧对应特点进行连线配对：
-                    </p>
-                    
-                    <div 
-                      ref={platformContainerRef}
-                      className="relative min-h-[300px]"
-                      onMouseMove={handlePlatformMouseMove}
-                      onMouseLeave={handlePlatformCancelDrawing}
-                      onClick={handlePlatformCancelDrawing}
-                    >
-                      {/* SVG连线层 */}
-                      <svg 
-                        ref={platformSvgRef}
-                        className="absolute inset-0 pointer-events-none z-10"
-                        style={{ width: '100%', height: '100%' }}
-                      >
-                        {/* 绘制已完成的连线 */}
-                        <AnimatePresence>
-                          {platformLines.map((line, i) => (
-                            <motion.g 
-                              key={`${line.leftId}-${line.rightId}`}
-                              initial={{ opacity: 0, pathLength: 0 }}
-                              animate={{ opacity: 1, pathLength: 1 }}
-                              exit={{ opacity: 0, pathLength: 0 }}
-                              transition={{ duration: 0.5, delay: i * 0.1 }}
-                            >
-                              <motion.line
-                                x1={line.start.x}
-                                y1={line.start.y}
-                                x2={line.end.x}
-                                y2={line.end.y}
-                                stroke="var(--still)"
-                                strokeWidth="3"
-                                className="transition-all duration-300"
-                                initial={{ pathLength: 0 }}
-                                animate={{ pathLength: 1 }}
-                                transition={{ duration: 0.6, ease: "easeInOut" }}
-                              />
-                              <motion.circle 
-                                cx={line.start.x} 
-                                cy={line.start.y} 
-                                r="5" 
-                                fill="var(--still)"
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                transition={{ delay: 0.3 }}
-                              />
-                              <motion.circle 
-                                cx={line.end.x} 
-                                cy={line.end.y} 
-                                r="5" 
-                                fill="var(--still)"
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                transition={{ delay: 0.4 }}
-                              />
-                            </motion.g>
-                          ))}
-                        </AnimatePresence>
-                        
-                        {/* 绘制当前正在绘制的连线 */}
-                        {platformActiveLine && (
-                          <motion.g
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                          >
-                            <line
-                              x1={platformActiveLine.start.x}
-                              y1={platformActiveLine.start.y}
-                              x2={platformActiveLine.end?.x || platformActiveLine.start.x}
-                              y2={platformActiveLine.end?.y || platformActiveLine.start.y}
-                              stroke="var(--still)"
-                              strokeWidth="3"
-                              strokeDasharray="8,4"
-                              className="animate-pulse"
-                            />
-                            <circle 
-                              cx={platformActiveLine.start.x} 
-                              cy={platformActiveLine.start.y} 
-                              r="5" 
-                              fill="var(--still)" 
-                            />
-                          </motion.g>
-                        )}
-                      </svg>
-                      
-                      <div className="grid grid-cols-2 gap-8 relative z-20">
-                        {/* 左侧平台 */}
-                        <div className="space-y-3">
-                          {['拼多多', '京东', '淘宝', '抖音'].map((platform, index) => {
-                            const isConnected = platformLines.some(line => line.leftId === platform);
-                            return (
-                              <motion.div
-                                key={platform}
-                                ref={el => el && (platformItemRefs.current[platform] = el)}
-                                onClick={(e) => handlePlatformLeftItemClick(platform, e)}
-                                className={`p-4 rounded-lg cursor-pointer transition-all duration-300 border-2 min-h-[60px] flex items-center justify-center ${
-                                  isConnected 
-                                    ? 'bg-blue-500/30 border-blue-400'
-                                    : 'bg-blue-900/20 border-blue-500/30 hover:bg-blue-900/40 hover:border-blue-400'
-                                }`}
-                                initial={{ opacity: 0, x: -50 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.1, duration: 0.5 }}
-                                whileHover={{ scale: 1.02, x: 5 }}
-                                whileTap={{ scale: 0.98 }}
-                              >
-                                <div className="text-center font-medium text-white text-base">
-                                  {platform}
-                                </div>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                        
-                        {/* 右侧特点 */}
-                        <div className="space-y-3">
-                          {['下沉市场价格敏感型消费者', '中高端品质化用户', '全消费层级覆盖', '年轻群体娱乐导向消费'].map((feature, index) => {
-                            const isConnected = platformLines.some(line => line.rightId === feature);
-                            return (
-                              <motion.div
-                                key={feature}
-                                ref={el => el && (platformItemRefs.current[feature] = el)}
-                                onClick={(e) => handlePlatformRightItemClick(feature, e)}
-                                className={`p-4 rounded-lg cursor-pointer transition-all duration-300 border-2 min-h-[60px] flex items-center justify-center ${
-                                  isConnected 
-                                    ? 'bg-blue-500/30 border-blue-400'
-                                    : 'bg-blue-900/20 border-blue-500/30 hover:bg-blue-900/40 hover:border-blue-400'
-                                }`}
-                                initial={{ opacity: 0, x: 50 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.1, duration: 0.5 }}
-                                whileHover={{ scale: 1.02, x: -5 }}
-                                whileTap={{ scale: 0.98 }}
-                              >
-                                <div className="text-center font-medium text-white text-base">
-                                  {feature}
-                                </div>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 词义配对题 */}
-                  <div className="glass-card rounded-xl p-6" style={{
-                    background: 'rgba(216, 207, 213, 0.16)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)'
-                  }}>
-                    <h3 className="text-lg font-semibold mb-4">词义配对题</h3>
-                    <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>
-                      点击左侧店铺类型，然后点击右侧对应特性进行连线配对：
-                    </p>
-                    
-                    <div 
-                      ref={wordContainerRef}
-                      className="relative min-h-[300px]"
-                      onMouseMove={handleWordMouseMove}
-                      onMouseLeave={handleWordCancelDrawing}
-                      onClick={handleWordCancelDrawing}
-                    >
-                      {/* SVG连线层 */}
-                      <svg 
-                        ref={wordSvgRef}
-                        className="absolute inset-0 pointer-events-none z-10"
-                        style={{ width: '100%', height: '100%' }}
-                      >
-                        {/* 绘制已完成的连线 */}
-                        <AnimatePresence>
-                          {wordLines.map((line, i) => (
-                            <motion.g 
-                              key={`${line.leftId}-${line.rightId}`}
-                              initial={{ opacity: 0, pathLength: 0 }}
-                              animate={{ opacity: 1, pathLength: 1 }}
-                              exit={{ opacity: 0, pathLength: 0 }}
-                              transition={{ duration: 0.5, delay: i * 0.1 }}
-                            >
-                              <motion.line
-                                x1={line.start.x}
-                                y1={line.start.y}
-                                x2={line.end.x}
-                                y2={line.end.y}
-                                stroke="var(--dawn)"
-                                strokeWidth="3"
-                                className="transition-all duration-300"
-                                initial={{ pathLength: 0 }}
-                                animate={{ pathLength: 1 }}
-                                transition={{ duration: 0.6, ease: "easeInOut" }}
-                              />
-                              <motion.circle 
-                                cx={line.start.x} 
-                                cy={line.start.y} 
-                                r="5" 
-                                fill="var(--dawn)"
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                transition={{ delay: 0.3 }}
-                              />
-                              <motion.circle 
-                                cx={line.end.x} 
-                                cy={line.end.y} 
-                                r="5" 
-                                fill="var(--dawn)"
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                transition={{ delay: 0.4 }}
-                              />
-                            </motion.g>
-                          ))}
-                        </AnimatePresence>
-                        
-                        {/* 绘制当前正在绘制的连线 */}
-                        {wordActiveLine && (
-                          <motion.g
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                          >
-                            <line
-                              x1={wordActiveLine.start.x}
-                              y1={wordActiveLine.start.y}
-                              x2={wordActiveLine.end?.x || wordActiveLine.start.x}
-                              y2={wordActiveLine.end?.y || wordActiveLine.start.y}
-                              stroke="var(--dawn)"
-                              strokeWidth="3"
-                              strokeDasharray="8,4"
-                              className="animate-pulse"
-                            />
-                            <circle 
-                              cx={wordActiveLine.start.x} 
-                              cy={wordActiveLine.start.y} 
-                              r="5" 
-                              fill="var(--dawn)" 
-                            />
-                          </motion.g>
-                        )}
-                      </svg>
-                      
-                      <div className="grid grid-cols-2 gap-8 relative z-20">
-                        {/* 左侧店铺类型 */}
-                        <div className="space-y-3">
-                          {['旗舰店', '专营店', '专卖店', '个人店'].map((shopType, index) => {
-                            const isConnected = wordLines.some(line => line.leftId === shopType);
-                            return (
-                              <motion.div
-                                key={shopType}
-                                ref={el => el && (wordItemRefs.current[shopType] = el)}
-                                onClick={(e) => handleWordLeftItemClick(shopType, e)}
-                                className={`p-4 rounded-lg cursor-pointer transition-all duration-300 border-2 min-h-[60px] flex items-center justify-center ${
-                                  isConnected 
-                                    ? 'bg-orange-500/30 border-orange-400'
-                                    : 'bg-orange-900/20 border-orange-500/30 hover:bg-orange-900/40 hover:border-orange-400'
-                                }`}
-                                initial={{ opacity: 0, x: -50 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.1, duration: 0.5 }}
-                                whileHover={{ scale: 1.02, x: 5 }}
-                                whileTap={{ scale: 0.98 }}
-                              >
-                                <div className="text-center font-medium text-white text-base">
-                                  {shopType}
-                                </div>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                        
-                        {/* 右侧特性 */}
-                        <div className="space-y-3">
-                          {['品牌方提供商标证等资质经营全品类', '需多个品牌授权经营同类商品', '需品牌独家授权经营单一品牌商品', '资质要求低经营轻量级品类'].map((characteristic, index) => {
-                            const isConnected = wordLines.some(line => line.rightId === characteristic);
-                            return (
-                              <motion.div
-                                key={characteristic}
-                                ref={el => el && (wordItemRefs.current[characteristic] = el)}
-                                onClick={(e) => handleWordRightItemClick(characteristic, e)}
-                                className={`p-4 rounded-lg cursor-pointer transition-all duration-300 border-2 min-h-[60px] flex items-center justify-center ${
-                                  isConnected 
-                                    ? 'bg-orange-500/30 border-orange-400'
-                                    : 'bg-orange-900/20 border-orange-500/30 hover:bg-orange-900/40 hover:border-orange-400'
-                                }`}
-                                initial={{ opacity: 0, x: 50 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.1, duration: 0.5 }}
-                                whileHover={{ scale: 1.02, x: -5 }}
-                                whileTap={{ scale: 0.98 }}
-                              >
-                                <div className="text-center font-medium text-white text-base">
-                                  {characteristic}
-                                </div>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* 排序题 */}
-              {currentSection === 'sequence' && (
-                <motion.div
-                  key="sequence"
-                  initial={{ opacity: 0, x: 100 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -100 }}
-                  transition={{ duration: 0.5 }}
-                  className="space-y-8"
-                >
-                  <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
-                    <Move className="w-6 h-6 mr-2" />
-                    排序题
-                  </h2>
-                  <div className="glass-card rounded-xl p-6" style={{
-                    background: 'rgba(216, 207, 213, 0.16)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)'
-                  }}>
-                    <h3 className="text-lg font-semibold mb-4">{sequenceQuestion.question}</h3>
-                    <p className="mb-6 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      拖拽下方选项来调整顺序：
-                    </p>
-                    <div className="space-y-3">
-                      {sequenceItems.map((item, index) => (
-                        <div
-                          key={item}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, item)}
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleDrop(e, index)}
-                          className={`p-4 rounded-lg cursor-move border-2 transition-all ${
-                            draggedItem === item 
-                              ? 'border-still bg-white/20' 
-                              : 'border-white/20 bg-white/5 hover:bg-white/10 hover:scale-105'
+        {/* 选择题部分 */}
+        <div className="max-w-4xl mx-auto px-4">
+          <AnimatePresence mode="wait">
+            {currentSection === 'multiple' && (
+              <motion.div
+                key="multiple-section"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-8"
+              >
+                <h2 className="text-2xl font-bold text-base-50 text-center mb-8">
+                  选择题（每题2分，共10分）
+                </h2>
+                {multipleChoice.map((question, index) => (
+                  <div key={question.id} className="bg-white/5 backdrop-blur-lg rounded-lg p-6 space-y-4">
+                    <h3 className="text-lg font-medium text-base-50">
+                      {index + 1}. {question.question}
+                    </h3>
+                <div className="space-y-2">
+                      {question.options.map((option) => (
+                        <button
+                          key={option}
+                          onClick={() => handleMultipleChoice(question.id, option[0])}
+                          className={`w-full text-left p-4 rounded-lg transition-colors ${
+                            answers[question.id] === option[0]
+                              ? 'bg-accent-500/20 shadow-glass-sm backdrop-blur-sm'
+                              : 'bg-base-900/20 hover:bg-base-900/30 shadow-glass-sm backdrop-blur-sm'
                           }`}
-                          style={{
-                            transform: draggedItem === item ? 'scale(1.02)' : 'scale(1)',
-                            transition: 'all 0.2s ease'
-                          }}
                         >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
-                                   style={{ backgroundColor: 'var(--still)', color: 'white' }}>
-                                {index + 1}
-                              </div>
-                              <span>{item}</span>
-                            </div>
-                            <Move className="w-5 h-5 text-gray-400" />
-                          </div>
-                        </div>
+                          {option}
+                        </button>
                       ))}
                     </div>
-                    <div className="mt-4 text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                      正确顺序：注册 → 资质提交 → 审核 → 签约缴费 → 店铺搭建
                     </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  ))}
+                <div className="flex justify-center mt-8">
+                  <button
+                    onClick={() => setCurrentSection('matching')}
+                    className="btn-primary rounded-lg flex items-center space-x-2"
+                  >
+                    <span>匹配题</span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  </button>
+                </div>
+              </motion.div>
+            )}
 
-            {/* 导航和提交按钮 */}
-            <div className="flex justify-between items-center mt-12">
-              <div>
-                {getPrevSection() && (
-                  <motion.button
-                    onClick={() => setCurrentSection(getPrevSection()!)}
-                    className="px-6 py-3 bg-white/10 rounded-lg text-gray-300 hover:bg-white/20 transition-all duration-300 flex items-center space-x-2"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <ArrowRight className="w-4 h-4 rotate-180" />
-                    <span>上一题型</span>
-                  </motion.button>
-                )}
+            {currentSection === 'matching' && (
+              <motion.div
+                key="matching-section"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-8"
+              >
+                <h2 className="text-2xl font-bold text-base-50 text-center mb-8">
+                  匹配题（每题2分，共8分）
+                </h2>
+                {shuffledQuestions.map((question) => (
+                  <div key={question.id} className="glass-effect rounded-2xl p-8">
+                    <h3 className="text-lg font-semibold text-base-50 mb-6 text-center">
+                      请将左侧的电商平台与右侧对应的平台特点进行匹配
+                    </h3>
+                    <div 
+                      className="relative grid md:grid-cols-2 gap-8 min-h-[400px]"
+                      onMouseMove={handleMouseMove}
+                      onMouseLeave={() => setActiveLine(null)}
+                    >
+                      <svg
+                        ref={svgRef}
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ zIndex: 1, width: '100%', height: '100%' }}
+                      >
+                        {lines.map((line, i) => (
+                          <g key={i}>
+                            <line
+                              x1={line.start.x}
+                              y1={line.start.y}
+                              x2={line.end.x}
+                              y2={line.end.y}
+                              stroke="#60A5FA"
+                              strokeWidth="2"
+                              className="transition-all duration-300"
+                            />
+                            <circle
+                              cx={line.start.x}
+                              cy={line.start.y}
+                              r="4"
+                              fill="#60A5FA"
+                            />
+                            <circle
+                              cx={line.end.x}
+                              cy={line.end.y}
+                              r="4"
+                              fill="#60A5FA"
+                            />
+                          </g>
+                        ))}
+                        {activeLine && (
+                          <g>
+                            <line
+                              x1={activeLine.start.x}
+                              y1={activeLine.start.y}
+                              x2={activeLine.end?.x || activeLine.start.x}
+                              y2={activeLine.end?.y || activeLine.start.y}
+                              stroke="#60A5FA"
+                              strokeWidth="2"
+                              strokeDasharray="5,5"
+                              className="animate-pulse"
+                            />
+                            <circle
+                              cx={activeLine.start.x}
+                              cy={activeLine.start.y}
+                              r="4"
+                              fill="#60A5FA"
+                            />
+                          </g>
+                        )}
+                      </svg>
+
+                      <div className="relative z-10">
+                        <h4 className="text-accent-500 font-medium mb-4">电商平台</h4>
+                        <div className="space-y-3">
+                          {question.leftItems.map(item => (
+                            <div
+                              key={item.id}
+                              ref={el => el && (itemRefs.current[item.id] = el)}
+                              onClick={(e) => handleLeftItemClick(item.id, e)}
+                              className={`glass-light bg-blue-900/10 p-4 cursor-pointer transition-all duration-300 hover:transform hover:scale-105 ${
+                                lines.some(line => line.leftId === item.id)
+                                  ? 'bg-blue-500/30'
+                                  : 'hover:bg-blue-900/40'
+                              }`}
+                            >
+                              <span className="text-base-50 font-medium">{item.text}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              
-              <div>
-                {getNextSection() ? (
-                  <motion.button
-                    onClick={() => setCurrentSection(getNextSection()!)}
-                    className="btn-primary rounded-xl shadow-lg flex items-center space-x-2"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <span>下一题型</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </motion.button>
-                ) : (
-                  <motion.button
-                    onClick={handleSubmit}
-                    className="btn-primary rounded-xl shadow-lg"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    提交测试
-                  </motion.button>
-                )}
+
+                      <div className="relative z-10">
+                        <h4 className="text-green-300 font-medium mb-4">平台特点</h4>
+                        <div className="space-y-3">
+                          {question.rightItems.map(item => (
+                            <div
+                              key={item.id}
+                              ref={el => el && (itemRefs.current[item.id] = el)}
+                              onClick={(e) => handleRightItemClick(item.id, e)}
+                              className={`glass-light bg-green-900/10 p-4 cursor-pointer transition-all duration-300 hover:transform hover:scale-105 ${
+                                lines.some(line => line.rightId === item.id)
+                                  ? 'bg-green-500/30'
+                                  : 'hover:bg-green-900/40'
+                              }`}
+                            >
+                              <span className="text-base-50">{item.text}</span>
+                </div>
+              ))}
+            </div>
               </div>
             </div>
-          </>
-        ) : (
-          /* 测试结果 */
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5 }}
-            className="text-center"
-          >
-            <div className="glass-card rounded-2xl p-12 max-w-2xl mx-auto" style={{
-              background: 'rgba(216, 207, 213, 0.18)',
-              border: '1px solid rgba(255, 255, 255, 0.25)'
-            }}>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.3, duration: 0.5 }}
-                className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6"
-                style={{
-                  background: 'linear-gradient(135deg, var(--still) 0%, var(--dawn) 100%)'
-                }}
+
+                    <div className="mt-6 flex justify-end">
+              <button
+                        onClick={() => handleReset(question)}
+                        className="text-sm text-red-400 hover:text-red-300 transition-colors"
               >
-                <Award className="w-12 h-12 text-white" />
-              </motion.div>
-              
-              <h2 className="text-3xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>测试完成！</h2>
-              
-              <div className="grid grid-cols-3 gap-6 mb-8">
-                <div className="text-center">
-                  <div className="text-2xl font-bold" style={{ color: 'var(--still)' }}>{score.correct}</div>
-                  <div className="text-sm text-gray-300">正确题数</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold" style={{ color: 'var(--still)' }}>{score.total}</div>
-                  <div className="text-sm text-gray-300">总题数</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold" style={{ color: 'var(--dawn)' }}>{score.percentage}%</div>
-                  <div className="text-sm text-gray-300">正确率</div>
-                </div>
-              </div>
+                        重置匹配
+              </button>
+            </div>
+          </div>
+              ))}
 
-              <div className="mb-8">
-                {score.percentage >= 80 ? (
-                  <div style={{ color: 'var(--still)' }}>
-                    <CheckCircle className="w-8 h-8 mx-auto mb-2" />
-                    <p className="text-lg font-semibold">优秀！</p>
-                    <p>你已经很好地掌握了平台入驻策略的核心知识</p>
-                  </div>
-                ) : score.percentage >= 60 ? (
-                  <div style={{ color: 'var(--dawn)' }}>
-                    <Target className="w-8 h-8 mx-auto mb-2" />
-                    <p className="text-lg font-semibold">良好</p>
-                    <p>继续加油，建议复习相关知识点</p>
-                  </div>
-                ) : (
-                  <div style={{ color: 'var(--mist)' }}>
-                    <RefreshCw className="w-8 h-8 mx-auto mb-2" />
-                    <p className="text-lg font-semibold">需要改进</p>
-                    <p>建议重新学习课程内容后再次测试</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              {/* 跳转到顺序题按钮 */}
+              <div className="flex justify-center mt-8">
                 <motion.button
-                  onClick={resetTest}
-                  className="px-6 py-3 rounded-xl font-semibold transition-all duration-300"
-                  style={{
-                    background: 'linear-gradient(135deg, var(--still) 0%, var(--dawn) 100%)',
-                    color: 'white'
-                  }}
+                  onClick={() => setCurrentSection('sequence')}
+                                      className="btn-primary rounded-xl shadow-lg transition-all duration-300 flex items-center space-x-2"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  重新测试
+                  <ArrowRight className="w-5 h-5" />
+                  <span>继续到顺序题</span>
                 </motion.button>
-                
-                <Link
-                  to="/course-summary"
-                  className="px-6 py-3 bg-white/10 rounded-xl font-semibold transition-all duration-300 hover:bg-white/20 inline-flex items-center justify-center"
+          </div>
+              </motion.div>
+            )}
+
+          {/* 顺序题部分 */}
+          {currentSection === 'sequence' && (
+            <motion.div
+              key="sequence-section"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -30 }}
+              transition={{ 
+                duration: 0.5, 
+                type: "spring", 
+                stiffness: 200, 
+                damping: 25
+              }}
+              className="flex justify-center items-start min-h-[80vh]"
+            >
+            <div className="w-full max-w-3xl mx-auto">
+                              <h2 className="text-2xl font-bold text-base-50 text-center mb-8">
+                  顺序题（每题3分，共6分）
+                </h2>
+              {sequenceQuestions.map((question) => (
+                <div key={question.id} className="glass-card p-8 mb-8">
+                                      <h3 className="text-lg font-semibold text-base-50 mb-6 text-center">
+                    {question.question}
+                  </h3>
+                  <div className="space-y-3">
+                    {(sequenceAnswers[question.id] || []).map((itemId, index) => {
+                      const item = question.items.find(i => i.id === itemId);
+                      if (!item) return null;
+              return (
+                        <div
+                          key={itemId}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, itemId)}
+                          onDragOver={handleDragOver}
+                          onDrop={(e) => handleDrop(e, itemId, question.id)}
+                          onDragEnd={handleDragEnd}
+                          className={`glass-light bg-blue-900/10 p-4 cursor-move transition-all duration-300 hover:bg-blue-900/20 hover:transform hover:scale-105 flex items-center ${
+                            draggedItem === itemId ? 'opacity-50 scale-95' : ''
+                          }`}
+                        >
+                          <span className="text-accent-500 font-bold mr-4 text-lg">
+                            {index + 1}.
+                          </span>
+                          <span className="text-base-50 font-medium">
+                            {item.text}
+                        </span>
+                          <div className="ml-auto text-accent-500">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                            </svg>
+                      </div>
+                      </div>
+                      );
+                    })}
+                      </div>
+                  <div className="mt-6 flex justify-between items-center">
+                    <button
+                      onClick={() => resetSequence(question.id)}
+                      className="text-sm text-red-400 hover:text-red-300 transition-colors flex items-center"
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      重新排序
+                    </button>
+                    <div className="text-sm text-gray-400">
+                      提示：拖拽上述选项来安排正确的顺序
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {/* 提交测试按钮 */}
+              <div className="flex justify-center mt-12">
+                <motion.button
+                  onClick={handleSubmitTest}
+                                      className="btn-primary rounded-xl shadow-lg transition-all duration-300 flex items-center space-x-3 px-12 py-4"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                 >
-                  查看课程总结
-                </Link>
+                  <Award className="w-6 h-6" />
+                  <span className="text-lg">提交测试</span>
+                </motion.button>
               </div>
             </div>
           </motion.div>
         )}
+            
+        {/* 测试结果 */}
+        {currentSection === 'results' && score && (
+          <motion.div
+            key="results-section"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-8"
+          >
+              <div className="text-center">
+                              <h2 className="text-3xl font-bold text-base-50 mb-8" data-testid="test-results">测试结果</h2>
+                              <div className="glass-effect rounded-2xl p-8 max-w-2xl mx-auto">
+                <div className="mb-6">
+                  <div className={`text-6xl font-bold mb-4 ${
+                    score.score >= 80 ? 'text-green-400' : 
+                    score.score >= 60 ? 'text-yellow-400' : 'text-red-400'
+                  }`}>
+                    {score.score}分
+                  </div>
+                  <p className="text-xl text-gray-300">
+                    总分：100分 | 答对 {score.correct} 题，共 {score.total} 题
+                  </p>
+              </div>
+                
+                <div className={`p-6 rounded-lg mb-6 ${
+                  score.score >= 80 ? 'glass-light bg-green-900/10' :
+                  score.score >= 60 ? 'glass-light bg-yellow-900/10' :
+                  'glass-light bg-red-900/10'
+                }`}>
+                  <h3 className={`text-lg font-semibold mb-3 ${
+                    score.score >= 80 ? 'text-green-300' :
+                    score.score >= 60 ? 'text-yellow-300' : 'text-red-300'
+                  }`}>
+                    {score.score >= 80 ? '优秀！' : 
+                     score.score >= 60 ? '良好' : '需要加强'}
+                  </h3>
+                  <p className="text-gray-300 text-sm leading-relaxed">
+                    {score.score >= 80 ?
+                      '恭喜您！您已经很好地掌握了电商平台入驻策略的核心知识，可以开始实际入驻操作了。' :
+                      score.score >= 60 ?
+                      '您对电商平台入驻策略有一定掌握，建议复习平台特点和资质准备等薄弱环节。' :
+                      '建议您重新学习相关章节，特别关注平台选择、入驻流程和资质准备等核心内容。'
+                    }
+                  </p>
+              </div>
+              </div>
+            </div>
+
+            {/* 详细答题反馈 */}
+            <div className="max-w-4xl mx-auto space-y-6">
+                              <h3 className="text-2xl font-bold text-base-50 text-center mb-6">答题详情</h3>
+              
+              {/* 选择题反馈 */}
+              <div className="glass-card p-6">
+                <h4 className="text-xl font-semibold text-accent-500 mb-4 flex items-center">
+                  <CheckCircle className="w-6 h-6 mr-2" />
+                  选择题 ({score.details.multipleChoice.filter((q: any) => q.isCorrect).length}/{score.details.multipleChoice.length})
+                </h4>
+                <div className="space-y-4">
+                  {score.details.multipleChoice.map((q: any, index: number) => (
+                    <div key={q.id} className={`p-4 rounded-lg shadow-glass-sm backdrop-blur-sm ${
+                      q.isCorrect ? 'bg-green-900/10' : 'bg-red-900/10'
+                    }`}>
+                      <div className="flex items-start justify-between mb-2">
+                        <h5 className="text-base-50 font-medium">
+                          {index + 1}. {q.question}
+                        </h5>
+                        <span className={`px-2 py-1 rounded text-sm font-medium ${
+                          q.isCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                        }`}>
+                          {q.isCorrect ? '正确' : '错误'}
+                        </span>
+                      </div>
+                      <div className="text-sm space-y-1">
+                        <p className="text-gray-300">
+                          您的答案: <span className={q.isCorrect ? 'text-green-400' : 'text-red-400'}>
+                            {q.userAnswer ? q.options.find((opt: string) => opt.startsWith(q.userAnswer)) : '未作答'}
+                          </span>
+                        </p>
+                        {!q.isCorrect && (
+                          <p className="text-gray-300">
+                            正确答案: <span className="text-green-400">
+                              {q.options.find((opt: string) => opt.startsWith(q.correctAnswer))}
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+          </div>
+        </div>
+
+              {/* 匹配题反馈 */}
+              <div className="glass-card p-6">
+                <h4 className="text-xl font-semibold text-green-300 mb-4 flex items-center">
+                  <CheckCircle className="w-6 h-6 mr-2" />
+                  匹配题 ({score.details.matching.filter((q: any) => q.isCorrect).length}/{score.details.matching.length})
+                </h4>
+                <div className="space-y-4">
+                  {score.details.matching.map((q: any, index: number) => (
+                    <div key={index} className={`p-4 rounded-lg shadow-glass-sm backdrop-blur-sm ${
+                      q.isCorrect ? 'bg-green-900/10' : 'bg-red-900/10'
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <h5 className="text-white font-medium">{q.leftText}</h5>
+                        <span className={`px-2 py-1 rounded text-sm font-medium ${
+                          q.isCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                }`}>
+                          {q.isCorrect ? '正确' : '错误'}
+                </span>
+                      </div>
+                      <div className="text-sm space-y-1">
+                        <p className="text-gray-300">
+                          您的匹配: <span className={q.isCorrect ? 'text-green-400' : 'text-red-400'}>
+                            {q.userRightText}
+                </span>
+                        </p>
+                        {!q.isCorrect && (
+                          <p className="text-gray-300">
+                            正确匹配: <span className="text-green-400">{q.correctRightText}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 顺序题反馈 */}
+              <div className="glass-card p-6">
+                <h4 className="text-xl font-semibold text-purple-300 mb-4 flex items-center">
+                  <CheckCircle className="w-6 h-6 mr-2" />
+                  顺序题 ({score.details.sequence.filter((q: any) => q.isCorrect).length}/{score.details.sequence.length})
+                </h4>
+                <div className="space-y-4">
+                  {score.details.sequence.map((q: any, index: number) => (
+                    <div key={q.id} className={`p-4 rounded-lg shadow-glass-sm backdrop-blur-sm ${
+                      q.isCorrect ? 'bg-green-900/10' : 'bg-red-900/10'
+                    }`}>
+                      <div className="flex items-start justify-between mb-2">
+                        <h5 className="text-white font-medium">{q.question}</h5>
+                        <span className={`px-2 py-1 rounded text-sm font-medium ${
+                          q.isCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                        }`}>
+                          {q.isCorrect ? '正确' : '错误'}
+                        </span>
+                      </div>
+                      <div className="text-sm space-y-2">
+                        <div>
+                          <p className="text-gray-300 mb-1">您的排序:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {q.userOrder.map((item: string, idx: number) => (
+                              <span key={idx} className={`px-2 py-1 rounded text-xs ${
+                                q.isCorrect ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                {idx + 1}. {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        {!q.isCorrect && (
+                          <div>
+                            <p className="text-gray-300 mb-1">正确排序:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {q.correctOrder.map((item: string, idx: number) => (
+                                <span key={idx} className="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400">
+                                  {idx + 1}. {item}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+              </div>
+            </div>
+                  ))}
+            </div>
+          </div>
+
+              {/* 重新测试按钮 */}
+              <div className="flex justify-center mt-8">
+                <motion.button
+                  onClick={resetTest}
+                                      className="btn-primary rounded-xl shadow-lg transition-all duration-300 flex items-center space-x-2"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <RefreshCw className="w-5 h-5" />
+                  <span>重新测试</span>
+                </motion.button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+          </AnimatePresence>
+        </div>
+
+        {/* 导航链接 */}
+        <div className="mt-16 flex justify-between items-center">
+          <Link
+            to="/course-summary"
+            className="flex items-center space-x-2 px-6 py-3 glass-effect rounded-xl text-base-50 hover:bg-white/5 transition-all duration-300"
+              >
+            <Target className="w-5 h-5" />
+            <span>返回：课程总结</span>
+          </Link>
+
+          <Link
+            to="/"
+            className="btn-primary rounded-xl shadow-lg transition-all duration-300 flex items-center space-x-2"
+              >
+            <span>回到首页</span>
+            <BookOpen className="w-5 h-5" />
+          </Link>
+        </div>
       </div>
     </div>
   );

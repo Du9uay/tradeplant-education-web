@@ -327,9 +327,9 @@ const QualificationsFeesPage: React.FC = () => {
 
         {/* 课程完成导航 */}
         <div className="text-center">
-          <Link to="/course-summary">
+          <Link to="/course-test">
             <div className="inline-flex items-center px-8 py-4 rounded-full font-medium transition-all duration-300 btn-primary">
-              完成学习，查看课程总结
+              完成学习，进入课堂测试
               <ArrowRight className="ml-2 w-5 h-5" />
             </div>
           </Link>
